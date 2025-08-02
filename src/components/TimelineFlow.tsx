@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -12,6 +12,8 @@ import {
   Node,
   Handle,
   Position,
+  useReactFlow,
+  ReactFlowProvider,
 } from '@xyflow/react';
 import { Clock, MapPin, Users, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -90,20 +92,22 @@ interface TimelineFlowProps {
   searchQuery?: string;
 }
 
-const TimelineFlow = ({ searchQuery }: TimelineFlowProps) => {
-  // Sample historical data
+const TimelineFlowInner = ({ searchQuery }: TimelineFlowProps) => {
+  const { setCenter } = useReactFlow();
+  
+  // Sample historical data with chronological order
   const initialNodes: Node[] = useMemo(() => [
     {
-      id: '1',
+      id: '5',
       type: 'event',
-      position: { x: 100, y: 200 },
+      position: { x: 100, y: 50 },
       data: {
-        title: 'Rise of Napoleon',
-        date: '1799',
-        description: 'Napoleon Bonaparte seizes power in France through a coup d\'état, beginning his rise to emperor.',
+        title: 'Economic Crisis',
+        date: '1780s',
+        description: 'Financial crisis in France due to debt from wars and poor harvests.',
         location: 'France',
-        people: 'Napoleon Bonaparte',
-        category: 'major',
+        category: 'cause',
+        chronOrder: 1,
       },
     },
     {
@@ -117,12 +121,27 @@ const TimelineFlow = ({ searchQuery }: TimelineFlowProps) => {
         location: 'France',
         people: 'Robespierre, Louis XVI',
         category: 'cause',
+        chronOrder: 2,
+      },
+    },
+    {
+      id: '1',
+      type: 'event',
+      position: { x: 900, y: 200 },
+      data: {
+        title: 'Rise of Napoleon',
+        date: '1799',
+        description: 'Napoleon Bonaparte seizes power in France through a coup d\'état, beginning his rise to emperor.',
+        location: 'France',
+        people: 'Napoleon Bonaparte',
+        category: 'major',
+        chronOrder: 3,
       },
     },
     {
       id: '3',
       type: 'event',
-      position: { x: 500, y: 300 },
+      position: { x: 1300, y: 300 },
       data: {
         title: 'Napoleonic Wars',
         date: '1803-1815',
@@ -130,12 +149,13 @@ const TimelineFlow = ({ searchQuery }: TimelineFlowProps) => {
         location: 'Europe',
         people: 'Napoleon, Wellington',
         category: 'effect',
+        chronOrder: 4,
       },
     },
     {
       id: '4',
       type: 'event',
-      position: { x: 900, y: 200 },
+      position: { x: 1700, y: 200 },
       data: {
         title: 'Battle of Waterloo',
         date: '1815',
@@ -143,25 +163,21 @@ const TimelineFlow = ({ searchQuery }: TimelineFlowProps) => {
         location: 'Belgium',
         people: 'Napoleon, Wellington',
         category: 'major',
-      },
-    },
-    {
-      id: '5',
-      type: 'event',
-      position: { x: 100, y: 50 },
-      data: {
-        title: 'Economic Crisis',
-        date: '1780s',
-        description: 'Financial crisis in France due to debt from wars and poor harvests.',
-        location: 'France',
-        category: 'cause',
+        chronOrder: 5,
       },
     },
   ], []);
 
   const initialEdges: Edge[] = useMemo(() => [
     {
-      id: 'e1-2',
+      id: 'e5-2',
+      source: '5',
+      target: '2',
+      type: 'smoothstep',
+      style: { stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '5,5' },
+    },
+    {
+      id: 'e2-1',
       source: '2',
       target: '1',
       type: 'smoothstep',
@@ -184,13 +200,6 @@ const TimelineFlow = ({ searchQuery }: TimelineFlowProps) => {
       animated: true,
       style: { stroke: 'hsl(var(--historical-accent))', strokeWidth: 2 },
     },
-    {
-      id: 'e5-2',
-      source: '5',
-      target: '2',
-      type: 'smoothstep',
-      style: { stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '5,5' },
-    },
   ], []);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -201,45 +210,63 @@ const TimelineFlow = ({ searchQuery }: TimelineFlowProps) => {
     [setEdges],
   );
 
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    const currentOrder = (node.data as any).chronOrder;
+    const nextNode = nodes.find(n => (n.data as any).chronOrder === currentOrder + 1);
+    
+    if (nextNode) {
+      setCenter(nextNode.position.x, nextNode.position.y, { duration: 800, zoom: 1.2 });
+    }
+  }, [nodes, setCenter]);
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      onNodeClick={onNodeClick}
+      nodeTypes={nodeTypes}
+      fitView
+      attributionPosition="bottom-left"
+      style={{ backgroundColor: 'transparent' }}
+    >
+      <Controls 
+        className="bg-card border border-border rounded-lg shadow-lg"
+        showZoom={true}
+        showFitView={true}
+        showInteractive={true}
+      />
+      <MiniMap 
+        className="bg-card border border-border rounded-lg shadow-lg"
+        nodeColor={(node) => {
+          const data = node.data as unknown as EventNodeData;
+          const category = data?.category;
+          switch (category) {
+            case 'major': return 'hsl(var(--historical-primary))';
+            case 'cause': return 'orange';
+            case 'effect': return 'green';
+            default: return 'hsl(var(--historical-accent))';
+          }
+        }}
+      />
+      <Background 
+        variant={'lines' as any}
+        gap={20}
+        size={1}
+        color="hsl(var(--border))"
+      />
+    </ReactFlow>
+  );
+};
+
+const TimelineFlow = ({ searchQuery }: TimelineFlowProps) => {
   return (
     <div className="w-full h-[600px] bg-gradient-to-br from-background to-historical-muted/30 rounded-xl border border-border shadow-lg overflow-hidden">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        nodeTypes={nodeTypes}
-        fitView
-        attributionPosition="bottom-left"
-        style={{ backgroundColor: 'transparent' }}
-      >
-        <Controls 
-          className="bg-card border border-border rounded-lg shadow-lg"
-          showZoom={true}
-          showFitView={true}
-          showInteractive={true}
-        />
-        <MiniMap 
-          className="bg-card border border-border rounded-lg shadow-lg"
-          nodeColor={(node) => {
-            const data = node.data as unknown as EventNodeData;
-            const category = data?.category;
-            switch (category) {
-              case 'major': return 'hsl(var(--historical-primary))';
-              case 'cause': return 'orange';
-              case 'effect': return 'green';
-              default: return 'hsl(var(--historical-accent))';
-            }
-          }}
-        />
-        <Background 
-          variant={'lines' as any}
-          gap={20}
-          size={1}
-          color="hsl(var(--border))"
-        />
-      </ReactFlow>
+      <ReactFlowProvider>
+        <TimelineFlowInner searchQuery={searchQuery} />
+      </ReactFlowProvider>
     </div>
   );
 };
